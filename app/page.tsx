@@ -1,23 +1,23 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { geoPath, geoNaturalEarth1 } from "d3-geo";
 import { feature } from "topojson-client";
 import worldData from "world-atlas/countries-110m.json";
 
-type Country = {
+type Nation = {
   id: string;
   name: string;
   population: number;
   economy: number;
-  budget: number;
+  treasury: number;
   stability: number;
-  research: number;
+  technology: number;
   relations: number;
 };
 
-type Tab = "world" | "economy" | "diplomacy" | "research";
+type GameTab = "overview" | "economy" | "diplomacy" | "technology";
 
 const countryNames: Record<string, string> = {
   "4":"Afghanistan","8":"Albania","12":"Algeria","24":"Angola",
@@ -38,16 +38,21 @@ const countryNames: Record<string, string> = {
   "840":"United States","704":"Vietnam"
 };
 
-const initialCountries: Country[] = Object.entries(countryNames).map(
+const palette = [
+  "#547a91", "#9b7653", "#6b8c70", "#8871a8",
+  "#a77b80", "#6e879e", "#8a9160", "#9b8068"
+];
+
+const initialNations: Nation[] = Object.entries(countryNames).map(
   ([id, name], index) => ({
     id,
     name,
-    population: 5 + ((index * 17) % 140),
-    economy: 50 + ((index * 31) % 900),
-    budget: 25 + ((index * 13) % 160),
+    population: 8 + ((index * 19) % 150),
+    economy: 70 + ((index * 37) % 950),
+    treasury: 35 + ((index * 17) % 180),
     stability: 55 + ((index * 7) % 40),
-    research: 10 + ((index * 11) % 75),
-    relations: 40 + ((index * 9) % 55)
+    technology: 15 + ((index * 13) % 70),
+    relations: 45 + ((index * 9) % 50)
   })
 );
 
@@ -56,7 +61,7 @@ const world = feature(
   (worldData as any).objects.countries
 ) as any;
 
-const projection = geoNaturalEarth1().fitSize([1000, 520], world);
+const projection = geoNaturalEarth1().fitSize([1200, 650], world);
 const pathGenerator = geoPath(projection);
 
 const money = (value: number) =>
@@ -65,682 +70,472 @@ const money = (value: number) =>
     : `$${value.toFixed(1)}B`;
 
 export default function Home() {
-  const [selected, setSelected] = useState("840");
-  const [search, setSearch] = useState("");
-  const [playing, setPlaying] = useState(false);
-  const [day, setDay] = useState(1);
-  const [speed, setSpeed] = useState(1);
-  const [tab, setTab] = useState<Tab>("world");
-
-  const [nations, setNations] = useState<Record<string, Country>>(
+  const [nations, setNations] = useState<Record<string, Nation>>(
     () => Object.fromEntries(
-      initialCountries.map(country => [country.id, country])
+      initialNations.map(nation => [nation.id, nation])
     )
   );
 
+  const [selected, setSelected] = useState("840");
+  const [target, setTarget] = useState("156");
+  const [tab, setTab] = useState<GameTab>("overview");
+  const [turn, setTurn] = useState(1);
+  const [year, setYear] = useState(2026);
+  const [search, setSearch] = useState("");
   const [events, setEvents] = useState<string[]>([
-    "Sandbox initialized. Your world is ready.",
-    "Global simulation systems are online."
+    "The world has entered a new era.",
+    "Choose a nation to begin your campaign."
   ]);
 
-  const [agreements, setAgreements] = useState<string[]>([]);
-  const [researchFocus, setResearchFocus] = useState("Clean energy");
+  const nation = nations[selected];
 
-  const country = nations[selected];
-
-  const filteredCountries = useMemo(
-    () => Object.values(nations)
-      .filter(item =>
-        item.name.toLowerCase().includes(search.toLowerCase())
-      )
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    [nations, search]
+  const countries = useMemo(
+    () => Object.values(nations).sort(
+      (a, b) => a.name.localeCompare(b.name)
+    ),
+    [nations]
   );
 
-  function logEvent(message: string) {
+  const filtered = countries.filter(country =>
+    country.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function addEvent(message: string) {
     setEvents(current => [
-      `Day ${day}: ${message}`,
+      `Turn ${turn}: ${message}`,
       ...current
-    ].slice(0, 12));
+    ].slice(0, 15));
   }
 
-  function advance(days = 1) {
-    setDay(current => current + days);
-
-    setNations(current =>
-      Object.fromEntries(
-        Object.entries(current).map(([id, item]) => {
-          const growth = (Math.random() - 0.46) * 0.35;
-
-          return [
-            id,
-            {
-              ...item,
-              economy: Math.max(
-                10,
-                Number(
-                  (item.economy * (1 + growth / 100)).toFixed(1)
-                )
-              ),
-              population: Number(
-                (item.population * 1.00015).toFixed(2)
-              ),
-              stability: Math.max(
-                20,
-                Math.min(
-                  99,
-                  Number(
-                    (item.stability + (Math.random() - 0.5) * 0.7)
-                      .toFixed(1)
-                  )
-                )
-              )
-            }
-          ];
-        })
-      )
-    );
-
-    setEvents(current => [
-      `Day ${day + days}: The world moved forward.`,
-      ...current
-    ].slice(0, 12));
-  }
-
-  useEffect(() => {
-    if (!playing) return;
-
-    const timer = setInterval(() => {
-      advance(speed);
-    }, 2200);
-
-    return () => clearInterval(timer);
-  }, [playing, speed]);
-
-  function selectCountry(id: string) {
+  function selectNation(id: string) {
     if (!nations[id]) return;
-
     setSelected(id);
+    addEvent(`${nations[id].name} selected.`);
+  }
+
+  function endTurn() {
+    setNations(current => {
+      const updated: Record<string, Nation> = {};
+
+      Object.entries(current).forEach(([id, item]) => {
+        const income = Math.max(1, item.economy * 0.012);
+
+        updated[id] = {
+          ...item,
+          treasury: Number((item.treasury + income).toFixed(1)),
+          economy: Number(
+            (item.economy * 1.0015).toFixed(1)
+          ),
+          population: Number(
+            (item.population * 1.0002).toFixed(2)
+          ),
+          stability: Math.min(
+            99,
+            Math.max(20, item.stability + (Math.random() - 0.5))
+          )
+        };
+      });
+
+      return updated;
+    });
+
+    setTurn(current => {
+      if (current >= 12) {
+        setYear(value => value + 1);
+        return 1;
+      }
+      return current + 1;
+    });
+
     setEvents(current => [
-      `Day ${day}: Opened ${nations[id].name}.`,
+      `Turn ${turn}: A new turn has begun. National income collected.`,
       ...current
-    ].slice(0, 12));
+    ].slice(0, 15));
   }
 
-  function applyPolicy(
-    name: string,
-    economyBoost: number,
-    stabilityBoost: number
-  ) {
-    if (country.budget < 8) return;
+  function investEconomy() {
+    if (nation.treasury < 15) return;
 
     setNations(current => ({
       ...current,
       [selected]: {
         ...current[selected],
-        economy: Number(
-          (current[selected].economy + economyBoost).toFixed(1)
-        ),
-        budget: current[selected].budget - 8,
-        stability: Math.min(
-          99,
-          current[selected].stability + stabilityBoost
-        )
+        treasury: current[selected].treasury - 15,
+        economy: current[selected].economy + 25,
+        stability: Math.min(99, current[selected].stability + 2)
       }
     }));
 
-    logEvent(`${country.name} launched ${name}.`);
+    addEvent(`${nation.name} invested in national development.`);
   }
 
-  function signAgreement(name: string) {
-    const label = `${country.name} · ${name}`;
-
-    if (agreements.includes(label)) return;
-
-    setAgreements(current => [label, ...current]);
+  function investTechnology() {
+    if (nation.treasury < 12 || nation.technology >= 100) return;
 
     setNations(current => ({
       ...current,
       [selected]: {
         ...current[selected],
-        relations: Math.min(
-          99,
-          current[selected].relations + 5
-        )
-      }
-    }));
-
-    logEvent(`${country.name} signed ${name}.`);
-  }
-
-  function investResearch() {
-    if (country.budget < 5 || country.research >= 100) return;
-
-    setNations(current => ({
-      ...current,
-      [selected]: {
-        ...current[selected],
-        research: Math.min(
+        treasury: current[selected].treasury - 12,
+        technology: Math.min(
           100,
-          current[selected].research + 8
-        ),
-        budget: current[selected].budget - 5
+          current[selected].technology + 5
+        )
       }
     }));
 
-    logEvent(`${country.name} invested in ${researchFocus}.`);
+    addEvent(`${nation.name} advanced its technology.`);
   }
+
+  function diplomaticAction() {
+    if (selected === target || nation.treasury < 8) return;
+
+    const other = nations[target];
+
+    setNations(current => ({
+      ...current,
+      [selected]: {
+        ...current[selected],
+        treasury: current[selected].treasury - 8,
+        relations: Math.min(100, current[selected].relations + 5)
+      },
+      [target]: {
+        ...current[target],
+        relations: Math.min(100, current[target].relations + 3)
+      }
+    }));
+
+    addEvent(
+      `${nation.name} opened a diplomatic initiative with ${other.name}.`
+    );
+  }
+
+  const selectedColor = palette[
+    countries.findIndex(item => item.id === selected) % palette.length
+  ];
 
   return (
-    <main className="app-shell">
+    <main className="strategy-game">
 
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">W</div>
+      <header className="game-topbar">
+        <div className="game-logo">
+          <span className="logo-symbol">W</span>
           <div>
-            <div className="brand-name">WORLD SIMULATION</div>
-            <div className="brand-subtitle">
-              BUILD A WORLD. SHAPE ITS FUTURE.
-            </div>
+            <strong>WORLD SIMULATION</strong>
+            <small>GRAND STRATEGY</small>
           </div>
         </div>
 
-        <div className="topbar-right">
-          <div className="day-pill">
-            YEAR 1 · DAY {day}
-          </div>
-          <div className="status-pill">
-            <i /> SANDBOX MODE
-          </div>
+        <div className="campaign-info">
+          <span>YEAR {year}</span>
+          <span>TURN {turn}/12</span>
+          <span>{countries.length} NATIONS</span>
         </div>
+
+        <button className="end-turn-button" onClick={endTurn}>
+          END TURN →
+        </button>
       </header>
 
-      <section className="hero-strip">
-        <div>
-          <span className="eyebrow">YOUR WORLD, YOUR RULES</span>
-          <h1>Global Sandbox</h1>
-          <p>
-            Lead nations, grow economies and shape a changing world.
-          </p>
-        </div>
+      <div className="game-layout">
 
-        <div className="hero-stats">
-          <div>
-            <span>COUNTRIES</span>
-            <strong>{Object.keys(nations).length}</strong>
-          </div>
-          <div>
-            <span>WORLD DAY</span>
-            <strong>{day}</strong>
-          </div>
-          <div>
-            <span>AGREEMENTS</span>
-            <strong>{agreements.length}</strong>
-          </div>
-        </div>
-      </section>
+        <aside className="game-menu">
+          <div className="menu-label">CAMPAIGN</div>
 
-      <nav className="main-nav">
-        {([
-          ["world", "◉", "World"],
-          ["economy", "▤", "Economy"],
-          ["diplomacy", "⇄", "Diplomacy"],
-          ["research", "✧", "Research"]
-        ] as [Tab, string, string][]).map(
-          ([id, icon, label]) => (
-            <button
-              key={id}
-              className={tab === id ? "nav-item active" : "nav-item"}
-              onClick={() => setTab(id)}
+          <button
+            className={tab === "overview" ? "menu-button active" : "menu-button"}
+            onClick={() => setTab("overview")}
+          >
+            ◈ Overview
+          </button>
+
+          <button
+            className={tab === "economy" ? "menu-button active" : "menu-button"}
+            onClick={() => setTab("economy")}
+          >
+            ▤ Economy
+          </button>
+
+          <button
+            className={tab === "diplomacy" ? "menu-button active" : "menu-button"}
+            onClick={() => setTab("diplomacy")}
+          >
+            ⇄ Diplomacy
+          </button>
+
+          <button
+            className={tab === "technology" ? "menu-button active" : "menu-button"}
+            onClick={() => setTab("technology")}
+          >
+            ✧ Technology
+          </button>
+
+          <div className="menu-divider" />
+
+          <div className="menu-label">WORLD</div>
+          <div className="menu-stat">
+            <span>Countries</span>
+            <strong>{countries.length}</strong>
+          </div>
+          <div className="menu-stat">
+            <span>Selected</span>
+            <strong>{nation.name}</strong>
+          </div>
+          <div className="menu-stat">
+            <span>Game mode</span>
+            <strong>Sandbox</strong>
+          </div>
+
+          <div className="menu-note">
+            Turn-based world simulation.
+          </div>
+        </aside>
+
+        <section className="map-section">
+          <div className="map-toolbar">
+            <div>
+              <strong>POLITICAL MAP</strong>
+              <small>SELECT A NATION ON THE MAP</small>
+            </div>
+            <div className="map-toolbar-actions">
+              <button onClick={() => setSelected("840")}>RESET VIEW</button>
+              <button onClick={endTurn}>NEXT TURN</button>
+            </div>
+          </div>
+
+          <div className="political-map">
+            <svg
+              viewBox="0 0 1200 650"
+              className="political-svg"
+              role="img"
+              aria-label="Political map of the world"
             >
-              <span>{icon}</span>
-              {label}
-            </button>
-          )
-        )}
-      </nav>
+              {world.features.map((item: any) => {
+                const id = String(item.id);
+                const index = countries.findIndex(
+                  country => country.id === id
+                );
 
-      <section className="dashboard">
+                const isPlayable = index >= 0;
+                const color = isPlayable
+                  ? palette[index % palette.length]
+                  : "#29343b";
 
-        <div className="main-column">
+                return (
+                  <path
+                    key={id}
+                    d={pathGenerator(item) || ""}
+                    fill={selected === id ? "#b9f27c" : color}
+                    className={
+                      selected === id
+                        ? "map-country selected"
+                        : isPlayable
+                          ? "map-country playable"
+                          : "map-country"
+                    }
+                    onClick={() => selectNation(id)}
+                  >
+                    <title>
+                      {countryNames[id] || "Unlisted territory"}
+                    </title>
+                  </path>
+                );
+              })}
+            </svg>
 
-          <section className="panel map-panel">
-            <div className="panel-header">
-              <div>
-                <div className="panel-title">WORLD MAP</div>
-                <div className="panel-subtitle">
-                  Select a country to manage it
+            <div className="map-overlay">
+              <span className="map-live-dot" />
+              POLITICAL BORDERS · YEAR {year}
+            </div>
+
+            <div className="map-selected">
+              <small>SELECTED NATION</small>
+              <strong>{nation.name}</strong>
+              <span>{money(nation.economy)} GDP</span>
+            </div>
+          </div>
+
+          <div className="map-bottom-bar">
+            <span><i className="legend-selected" /> Selected nation</span>
+            <span><i className="legend-country" /> Playable nations</span>
+            <span><i className="legend-neutral" /> Other territories</span>
+            <span>WORLD MAP</span>
+          </div>
+
+          <section className="world-events">
+            <div className="events-heading">
+              <strong>WORLD CHRONICLE</strong>
+              <span>RECENT EVENTS</span>
+            </div>
+            <div className="events-list">
+              {events.slice(0, 4).map((event, index) => (
+                <div className="world-event" key={`${event}-${index}`}>
+                  <i />
+                  {event}
                 </div>
-              </div>
-              <div className="map-legend">
-                <span className="legend-dot" />
-                Selected country
-              </div>
-            </div>
-
-            <div className="map-area">
-              <svg
-                className="world-map"
-                viewBox="0 0 1000 520"
-                role="img"
-                aria-label="Interactive world map"
-              >
-                {world.features.map((item: any) => {
-                  const id = String(item.id);
-
-                  return (
-                    <path
-                      key={id}
-                      d={pathGenerator(item) || ""}
-                      className={`country-shape ${
-                        selected === id ? "selected" : ""
-                      } ${
-                        countryNames[id] ? "available" : "unavailable"
-                      }`}
-                      onClick={() => selectCountry(id)}
-                    />
-                  );
-                })}
-              </svg>
-
-              <div className="map-caption">
-                <span className="live-dot" />
-                SIMULATION ACTIVE · {country.name.toUpperCase()}
-              </div>
-            </div>
-
-            <div className="controls">
-              <button
-                className="game-button primary"
-                onClick={() => setPlaying(!playing)}
-              >
-                {playing ? "Ⅱ Pause" : "▶ Play"}
-              </button>
-
-              <button
-                className="game-button"
-                onClick={() => advance(1)}
-              >
-                +1 Day
-              </button>
-
-              <span className="panel-subtitle speed-label">
-                Simulation speed
-              </span>
-
-              {[1, 2, 4].map(value => (
-                <button
-                  key={value}
-                  className={`game-button speed-button ${
-                    speed === value ? "primary" : ""
-                  }`}
-                  onClick={() => setSpeed(value)}
-                >
-                  {value}x
-                </button>
               ))}
             </div>
           </section>
+        </section>
 
-          {tab === "world" && (
-            <section className="panel">
-              <div className="panel-header">
+        <aside className="country-panel">
+          <div className="country-panel-heading">
+            <small>COUNTRY MANAGEMENT</small>
+            <h2>{nation.name}</h2>
+            <span className="country-id">COUNTRY ID: {nation.id}</span>
+          </div>
+
+          <div className="country-flag-block" style={{
+            background: `linear-gradient(135deg, ${selectedColor}, #18242b)`
+          }}>
+            <span>{nation.name.slice(0, 2).toUpperCase()}</span>
+            <small>YOUR SELECTED NATION</small>
+          </div>
+
+          <div className="country-tabs">
+            <button
+              className={tab === "overview" ? "active" : ""}
+              onClick={() => setTab("overview")}
+            >STATS</button>
+            <button
+              className={tab === "economy" ? "active" : ""}
+              onClick={() => setTab("economy")}
+            >ECONOMY</button>
+            <button
+              className={tab === "diplomacy" ? "active" : ""}
+              onClick={() => setTab("diplomacy")}
+            >DIPLOMACY</button>
+          </div>
+
+          {tab === "overview" && (
+            <div className="country-panel-content">
+              <div className="big-stat">
+                <small>ECONOMY</small>
+                <strong>{money(nation.economy)}</strong>
+              </div>
+
+              <div className="country-stat-grid">
                 <div>
-                  <div className="panel-title">COUNTRY OVERVIEW</div>
-                  <div className="panel-subtitle">
-                    National status and development
-                  </div>
+                  <small>POPULATION</small>
+                  <strong>{nation.population.toFixed(1)}M</strong>
                 </div>
-                <span className="country-tag">ID {country.id}</span>
-              </div>
-
-              <div className="country-overview">
-                <div className="country-heading">
-                  <div>
-                    <span className="eyebrow">SELECTED NATION</span>
-                    <h2>{country.name}</h2>
-                  </div>
-                  <div className="stability-badge">
-                    <span />
-                    {country.stability}% stability
-                  </div>
+                <div>
+                  <small>TREASURY</small>
+                  <strong>{money(nation.treasury)}</strong>
                 </div>
-
-                <div className="stat-grid">
-                  <div className="stat-card">
-                    <span>Population</span>
-                    <strong>{country.population.toFixed(1)}M</strong>
-                    <small>Illustrative simulation</small>
-                  </div>
-                  <div className="stat-card">
-                    <span>Economy</span>
-                    <strong>{money(country.economy)}</strong>
-                    <small>Simulated GDP</small>
-                  </div>
-                  <div className="stat-card">
-                    <span>National budget</span>
-                    <strong>{money(country.budget)}</strong>
-                    <small>Available funds</small>
-                  </div>
-                  <div className="stat-card">
-                    <span>Research level</span>
-                    <strong>{country.research}%</strong>
-                    <small>Innovation progress</small>
-                  </div>
+                <div>
+                  <small>STABILITY</small>
+                  <strong>{nation.stability.toFixed(0)}%</strong>
                 </div>
-
-                <div className="progress-wrap">
-                  <div className="progress-label">
-                    <span>Stability index</span>
-                    <strong>{country.stability}%</strong>
-                  </div>
-                  <div className="progress-track">
-                    <i style={{ width: `${country.stability}%` }} />
-                  </div>
+                <div>
+                  <small>TECHNOLOGY</small>
+                  <strong>{nation.technology}%</strong>
                 </div>
               </div>
-            </section>
+
+              <div className="stat-progress">
+                <div><span>Stability</span><b>{nation.stability.toFixed(0)}%</b></div>
+                <div className="progress-line">
+                  <i style={{ width: `${nation.stability}%` }} />
+                </div>
+              </div>
+
+              <div className="stat-progress">
+                <div><span>Technology</span><b>{nation.technology}%</b></div>
+                <div className="progress-line">
+                  <i style={{ width: `${nation.technology}%` }} />
+                </div>
+              </div>
+            </div>
           )}
 
           {tab === "economy" && (
-            <section className="panel feature-panel">
-              <div className="panel-header">
-                <div>
-                  <div className="panel-title">
-                    ECONOMY & DEVELOPMENT
-                  </div>
-                  <div className="panel-subtitle">
-                    National policy center
-                  </div>
-                </div>
-                <span className="country-tag">ECONOMY</span>
+            <div className="country-panel-content">
+              <div className="big-stat">
+                <small>NATIONAL TREASURY</small>
+                <strong>{money(nation.treasury)}</strong>
               </div>
-
-              <div className="feature-content">
-                <h2>Build a stronger economy</h2>
-                <p>
-                  Invest in development programs for {country.name}.
-                  Each action uses part of the national budget.
-                </p>
-
-                <div className="policy-grid">
-                  <button
-                    className="policy-card"
-                    disabled={country.budget < 8}
-                    onClick={() =>
-                      applyPolicy("Education & skills", 12, 2)
-                    }
-                  >
-                    <span className="policy-icon">▤</span>
-                    <strong>Education & skills</strong>
-                    <small>Improve productivity and stability.</small>
-                    <b>Cost: $8B</b>
-                  </button>
-
-                  <button
-                    className="policy-card"
-                    disabled={country.budget < 8}
-                    onClick={() =>
-                      applyPolicy("Green transition", 9, 3)
-                    }
-                  >
-                    <span className="policy-icon">♧</span>
-                    <strong>Green transition</strong>
-                    <small>Support sustainable infrastructure.</small>
-                    <b>Cost: $8B</b>
-                  </button>
-
-                  <button
-                    className="policy-card"
-                    disabled={country.budget < 8}
-                    onClick={() =>
-                      applyPolicy("Trade reform", 15, 1)
-                    }
-                  >
-                    <span className="policy-icon">⇄</span>
-                    <strong>Trade reform</strong>
-                    <small>Improve trade and business activity.</small>
-                    <b>Cost: $8B</b>
-                  </button>
-
-                  <button
-                    className="policy-card"
-                    disabled={country.budget < 8}
-                    onClick={() =>
-                      applyPolicy("Infrastructure", 11, 2)
-                    }
-                  >
-                    <span className="policy-icon">⌂</span>
-                    <strong>Infrastructure</strong>
-                    <small>Upgrade transport and public services.</small>
-                    <b>Cost: $8B</b>
-                  </button>
-                </div>
-              </div>
-            </section>
+              <p className="panel-description">
+                Invest in your country's economy. Development costs 15B.
+              </p>
+              <button
+                className="management-action"
+                disabled={nation.treasury < 15}
+                onClick={investEconomy}
+              >
+                <strong>＋ National development</strong>
+                <small>Cost: $15B · Increase economy</small>
+              </button>
+            </div>
           )}
 
           {tab === "diplomacy" && (
-            <section className="panel feature-panel">
-              <div className="panel-header">
-                <div>
-                  <div className="panel-title">DIPLOMACY CENTER</div>
-                  <div className="panel-subtitle">
-                    International relations
-                  </div>
-                </div>
-                <span className="country-tag">DIPLOMACY</span>
+            <div className="country-panel-content">
+              <div className="big-stat">
+                <small>RELATIONS INDEX</small>
+                <strong>{nation.relations}/100</strong>
               </div>
 
-              <div className="feature-content">
-                <h2>International relations</h2>
-                <p>
-                  Build peaceful partnerships for {country.name}.
-                </p>
+              <label className="target-label" htmlFor="diplomacy-target">
+                SELECT A COUNTRY
+              </label>
+              <select
+                id="diplomacy-target"
+                value={target}
+                onChange={event => setTarget(event.target.value)}
+                className="nation-select"
+              >
+                {countries
+                  .filter(item => item.id !== selected)
+                  .map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+              </select>
 
-                <div className="relation-card">
-                  <div>
-                    <span className="eyebrow">RELATIONS INDEX</span>
-                    <strong>{country.relations}/100</strong>
-                  </div>
-                  <div className="progress-track">
-                    <i style={{ width: `${country.relations}%` }} />
-                  </div>
-                </div>
-
-                <div className="action-row">
-                  <button
-                    className="action-card"
-                    onClick={() => signAgreement("Trade agreement")}
-                  >
-                    <strong>⇄ Trade agreement</strong>
-                    <span>Economic cooperation</span>
-                  </button>
-
-                  <button
-                    className="action-card"
-                    onClick={() => signAgreement("Research partnership")}
-                  >
-                    <strong>✧ Research partnership</strong>
-                    <span>Scientific cooperation</span>
-                  </button>
-
-                  <button
-                    className="action-card"
-                    onClick={() => signAgreement("Cultural exchange")}
-                  >
-                    <strong>◇ Cultural exchange</strong>
-                    <span>People-to-people ties</span>
-                  </button>
-                </div>
-
-                <h3 className="subheading">Signed agreements</h3>
-
-                {agreements.length > 0 ? (
-                  <div className="agreement-list">
-                    {agreements.map(item => (
-                      <div key={item}>✓ {item}</div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    No agreements yet. Start your first initiative.
-                  </div>
-                )}
-              </div>
-            </section>
+              <button
+                className="management-action"
+                disabled={nation.treasury < 8 || target === selected}
+                onClick={diplomaticAction}
+              >
+                <strong>⇄ Diplomatic initiative</strong>
+                <small>Cost: $8B · Improve relations</small>
+              </button>
+            </div>
           )}
 
-          {tab === "research" && (
-            <section className="panel feature-panel">
-              <div className="panel-header">
-                <div>
-                  <div className="panel-title">
-                    RESEARCH & INNOVATION
-                  </div>
-                  <div className="panel-subtitle">
-                    National research center
-                  </div>
-                </div>
-                <span className="country-tag">SCIENCE</span>
+          {tab === "technology" && (
+            <div className="country-panel-content">
+              <div className="big-stat">
+                <small>TECHNOLOGY LEVEL</small>
+                <strong>{nation.technology}%</strong>
               </div>
-
-              <div className="feature-content">
-                <h2>Shape the next era</h2>
-                <p>
-                  Invest in research to improve innovation in {country.name}.
-                </p>
-
-                <label className="select-label" htmlFor="research-focus">
-                  Research focus
-                </label>
-
-                <select
-                  id="research-focus"
-                  className="search-input focus-select"
-                  value={researchFocus}
-                  onChange={event => setResearchFocus(event.target.value)}
-                >
-                  <option>Clean energy</option>
-                  <option>Medicine</option>
-                  <option>Artificial intelligence</option>
-                  <option>Space science</option>
-                  <option>Agriculture</option>
-                </select>
-
-                <div className="research-meter">
-                  <div className="progress-label">
-                    <span>{researchFocus}</span>
-                    <strong>{country.research}%</strong>
-                  </div>
-                  <div className="progress-track">
-                    <i style={{ width: `${country.research}%` }} />
-                  </div>
-                </div>
-
-                <button
-                  className="game-button primary invest-button"
-                  disabled={country.budget < 5 || country.research >= 100}
-                  onClick={investResearch}
-                >
-                  ✧ Invest $5B in research
-                </button>
-              </div>
-            </section>
+              <p className="panel-description">
+                Support science and innovation in your nation.
+              </p>
+              <button
+                className="management-action"
+                disabled={nation.treasury < 12 || nation.technology >= 100}
+                onClick={investTechnology}
+              >
+                <strong>✧ Research investment</strong>
+                <small>Cost: $12B · Technology +5</small>
+              </button>
+            </div>
           )}
 
-        </div>
-
-        <aside className="sidebar">
-
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <div className="panel-title">COUNTRY DIRECTORY</div>
-                <div className="panel-subtitle">
-                  Browse playable nations
-                </div>
-              </div>
-              <span className="country-tag">
-                {filteredCountries.length}
-              </span>
-            </div>
-
-            <div className="sidebar-content">
-              <input
-                className="search-input"
-                placeholder="Search countries..."
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-              />
-
-              <div className="country-list">
-                {filteredCountries.map(item => (
-                  <button
-                    key={item.id}
-                    className={`country-item ${
-                      selected === item.id ? "active" : ""
-                    }`}
-                    onClick={() => selectCountry(item.id)}
-                  >
-                    <span>{item.name}</span>
-                    <span>{money(item.economy)} →</span>
-                  </button>
-                ))}
-
-                {filteredCountries.length === 0 && (
-                  <div className="empty-state">No countries found.</div>
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="timeline">
-              <div className="timeline-head">
-                <div>
-                  <div className="panel-title">WORLD CHRONICLE</div>
-                  <div className="panel-subtitle">
-                    Latest simulation events
-                  </div>
-                </div>
-                <span className="live-dot" />
-              </div>
-
-              {events.map((event, index) => (
-                <div className="event" key={`${event}-${index}`}>
-                  <span className="event-node" />
-                  <div>{event}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel quick-panel">
-            <div className="panel-title">WORLD STATUS</div>
-            <div className="quick-row">
-              <span>Simulation</span>
-              <strong>{playing ? "Running" : "Paused"}</strong>
-            </div>
-            <div className="quick-row">
-              <span>Speed</span>
-              <strong>{speed}x</strong>
-            </div>
-            <div className="quick-row">
-              <span>Game mode</span>
-              <strong>Sandbox</strong>
-            </div>
-          </section>
-
+          <div className="country-panel-footer">
+            <span>GAME TURN</span>
+            <strong>{turn} / 12</strong>
+          </div>
         </aside>
-      </section>
+      </div>
 
-      <footer className="footer">
-        WORLD SIMULATION GAME · VERSION 2.0 · SANDBOX EDITION
-        <br />
-        All country statistics are illustrative game values, not live data.
+      <footer className="game-footer">
+        WORLD SIMULATION GAME · GRAND STRATEGY EDITION · VERSION 3.0
+        <span>Illustrative game data · Not live statistics</span>
       </footer>
-
     </main>
   );
 }
