@@ -630,3 +630,118 @@ export default function Home() {
 
                 <div className="research-meter">
                   <div className
+                                      <div className="progress-label">
+                    <span>{researchFocus}</span>
+                    <strong>{country.research}%</strong>
+                  </div>
+                  <div className="progress-track">
+                    <i style={{ width: `${country.research}%` }} />
+                  </div>
+                </div>
+
+                <button
+                  className="game-button primary invest-button"
+                  disabled={country.budget < 5 || country.research >= 100}
+                  onClick={investResearch}
+                >
+                  ✧ Invest $5B in research
+                </button>
+              </div>
+            </section>
+          )}
+
+        </div>
+
+        <aside className="sidebar">
+
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <div className="panel-title">COUNTRY DIRECTORY</div>
+                <div className="panel-subtitle">
+                  Browse playable nations
+                </div>
+              </div>
+              <span className="country-tag">
+                {filteredCountries.length}
+              </span>
+            </div>
+
+            <div className="sidebar-content">
+              <input
+                className="search-input"
+                placeholder="Search countries..."
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+              />
+
+              <div className="country-list">
+                {filteredCountries.map(item => (
+                  <button
+                    key={item.id}
+                    className={`country-item ${
+                      selected === item.id ? "active" : ""
+                    }`}
+                    onClick={() => selectCountry(item.id)}
+                  >
+                    <span>{item.name}</span>
+                    <span>{money(item.economy)} →</span>
+                  </button>
+                ))}
+
+                {filteredCountries.length === 0 && (
+                  <div className="empty-state">No countries found.</div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="timeline">
+              <div className="timeline-head">
+                <div>
+                  <div className="panel-title">WORLD CHRONICLE</div>
+                  <div className="panel-subtitle">
+                    Latest simulation events
+                  </div>
+                </div>
+                <span className="live-dot" />
+              </div>
+
+              {events.map((event, index) => (
+                <div className="event" key={`${event}-${index}`}>
+                  <span className="event-node" />
+                  <div>{event}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel quick-panel">
+            <div className="panel-title">WORLD STATUS</div>
+            <div className="quick-row">
+              <span>Simulation</span>
+              <strong>{playing ? "Running" : "Paused"}</strong>
+            </div>
+            <div className="quick-row">
+              <span>Speed</span>
+              <strong>{speed}x</strong>
+            </div>
+            <div className="quick-row">
+              <span>Game mode</span>
+              <strong>Sandbox</strong>
+            </div>
+          </section>
+
+        </aside>
+      </section>
+
+      <footer className="footer">
+        WORLD SIMULATION GAME · VERSION 2.0 · SANDBOX EDITION
+        <br />
+        All country statistics are illustrative game values, not live data.
+      </footer>
+
+    </main>
+  );
+}
