@@ -629,8 +629,7 @@ export default function Home() {
                 </select>
 
                 <div className="research-meter">
-                  <div className
-                                      <div className="progress-label">
+                  <div className="progress-label">
                     <span>{researchFocus}</span>
                     <strong>{country.research}%</strong>
                   </div>
